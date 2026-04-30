@@ -157,95 +157,98 @@ struct Thread {
                     board.see(move, 0) * 2e7 - 1e7;
         }
 
-        // Iterate moves
-        for (i32 i = 0; i < move_count; i++) {
-            // Sort next move
-            i32 next = i;
-
-            for (i32 k = i; k < move_count; k++)
-                if (move_scores[k] > move_scores[next])
-                    next = k;
-            
-            swap(move_list[i], move_list[next]);
-            swap(move_scores[i], move_scores[next]);
-
-            // Search data
-            i32 move = move_list[i],
-                is_quiet = board.quiet(move),
-                depth_next = depth - 1;
-
-            // Start nodes count
-            u64 nodes_start = nodes;
-
-            // Quiet pruning and SEE pruning in qsearch
-            if (!depth && best > -WIN && move_scores[i] < 1e6)
-                break;
-
-            // Late move pruning
-            if (ply && best > -WIN && quiet_count > 1 + depth * depth >> !is_improving && is_quiet)
-                continue;
-
-            // Futility pruning
-            if (ply && best > -WIN && depth < 10 && !board.checkers && stack_eval[ply] + 80 * depth + move_scores[i] / 32 + 90 < alpha && is_quiet)
-                continue;
-
-            // SEE pruning in pvsearch
-            if (ply && best > -WIN && move_scores[i] < 1e6 && !board.see(move, -77 * depth))
-                continue;
-
-            // Make
-            Board child = board;
-
-            if (move == excluded || child.make(move))
-                continue;
-
-            // Singular extension
-            if (ply && depth > 3 && !excluded && move == tt.move && tt.depth > depth - 4 && tt.bound && abs(tt.score) < WIN) {
-                i32 singular_beta = tt.score - depth;
-                
-                score = search(board, singular_beta - 1, singular_beta, ply, depth_next / 2, FALSE, move);
-
-                // Extensions
-                if (score < singular_beta)
-                    depth_next +=
-                        // Single extension
-                        1 +
-                        // Double extension
-                        (!is_pv && score < singular_beta - 10) +
-                        // Triple extension
-                        (!is_pv && score < singular_beta - 35 && is_quiet);
-                // Multicut
-                else if (score >= beta)
-                    return score;
-            }
-
-            // Update stack
-            stack_conthist[ply + 2] = &conthist[board.board[move_from(move)]][move_to(move)];
-
-            // Set this as a dummy value to drop straight into ZWS if we don't do LMR
-            score = beta;
-
-            // Late move reduction
-            if (depth > 2 && legals > 2) {
-                i32 reduction =
-                    // Base reduction
-                    log(depth) * log(legals + 1) * .33 + 1 +
-                    // PV
-                    !is_pv -
-                    // History reduction
-                    is_quiet * move_scores[i] / 7560;
-
-                if (reduction > 0)
-                    score = -search(child, -alpha - 1, -alpha, ply + 1, depth_next - (is_quiet ? reduction : 1));
-            }
-
-            // Zero window search (don't do it for qsearch)
-            if (score > alpha && depth && legals)
-                score = -search(child, -alpha - 1, -alpha, ply + 1, depth_next);
-
-            // Principal variation search and qsearch
-            if (!depth || !legals || is_pv && score > alpha)
-                score = -search(child, -beta, -alpha, ply + 1, depth_next, is_pv);
+// Iterate moves
+		for (i32 i = 0; i < move_count; i++) {
+			// Sort next move
+			i32 next = i;
+			
+			for (i32 k = i; k < move_count; k++)
+				if (move_scores[k] > move_scores[next])
+					next = k;
+			
+			swap(move_list[i], move_list[next]);
+			swap(move_scores[i], move_scores[next]);
+			
+			// Search data
+			i32 move = move_list[i],
+			is_quiet = board.quiet(move),
+			depth_next = depth - 1;
+			
+			// Start nodes count
+			u64 nodes_start = nodes;
+			
+			// Quiet pruning and SEE pruning in qsearch
+			if (!depth && best > -WIN && move_scores[i] < 1e6)
+				break;
+			
+			// Late move pruning
+			if (ply && best > -WIN && quiet_count > 1 + depth * depth >> !is_improving && is_quiet)
+				continue;
+			
+			// Calculate base LMR reduction early (for pruning decisions)
+			i32 base_reduction = 0;
+			if (depth > 2 && legals > 2)
+				base_reduction = log(depth) * log(legals + 1) * .33 + 1;
+			
+			// Compute LMR depth for pruning decisions (base reduction only, no history)
+			i32 lmr_depth = is_quiet ? max(0, depth_next - base_reduction) : depth_next;
+			
+			// Futility pruning (based on LMR depth)
+			if (ply && best > -WIN && lmr_depth < 10 && !board.checkers && stack_eval[ply] + 80 * lmr_depth + move_scores[i] / 32 + 90 < alpha && is_quiet)
+				continue;
+			
+			// SEE pruning in pvsearch (based on LMR depth)
+			if (ply && best > -WIN && move_scores[i] < 1e6 && !board.see(move, -77 * lmr_depth))
+				continue;
+			
+			// Make
+			Board child = board;
+			
+			if (move == excluded || child.make(move))
+				continue;
+			
+			// Singular extension
+			if (ply && depth > 3 && !excluded && move == tt.move && tt.depth > depth - 4 && tt.bound && abs(tt.score) < WIN) {
+				i32 singular_beta = tt.score - depth;
+				
+				score = search(board, singular_beta - 1, singular_beta, ply, depth_next / 2, FALSE, move);
+				
+				// Extensions
+				if (score < singular_beta)
+					depth_next +=
+					// Single extension
+					1 +
+					// Double extension
+					(!is_pv && score < singular_beta - 10) +
+					// Triple extension
+					(!is_pv && score < singular_beta - 35 && is_quiet);
+				// Multicut
+				else if (score >= beta)
+					return score;
+			}
+			
+			// Update stack
+			stack_conthist[ply + 2] = &conthist[board.board[move_from(move)]][move_to(move)];
+			
+			// Set this as a dummy value to drop straight into ZWS if we don't do LMR
+			score = beta;
+			
+			// Late move reduction (calculate full reduction with PV and history)
+			if (depth > 2 && legals > 2) {
+				i32 reduction = base_reduction + !is_pv - is_quiet * move_scores[i] / 7560;
+				
+				if (reduction > 0)
+					score = -search(child, -alpha - 1, -alpha, ply + 1, depth_next - (is_quiet ? reduction : 1));
+			}
+			
+			// Zero window search (don't do it for qsearch)
+			if (score > alpha && depth && legals)
+				score = -search(child, -alpha - 1, -alpha, ply + 1, depth_next);
+			
+			// Principal variation search and qsearch
+			if (!depth || !legals || is_pv && score > alpha)
+				score = -search(child, -beta, -alpha, ply + 1, depth_next, is_pv);
+			
 
             // Update legal moves count
             legals++;
