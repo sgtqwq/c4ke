@@ -236,7 +236,7 @@ struct Thread {
                     is_quiet * move_scores[i] / 7560;
 
                 if (reduction > 0)
-                    score = -search(child, -alpha - 1, -alpha, ply + 1, depth_next - (is_quiet ? reduction : 1));
+                    score = -search(child, -alpha - 1, -alpha, ply + 1, depth_next - (is_quiet ? reduction : reduction / 2));
             }
 
             // Zero window search (don't do it for qsearch)
