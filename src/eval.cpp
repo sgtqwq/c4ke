@@ -48,5 +48,5 @@ i32 PHASE[] { 0, 1, 1, 2, 4, 0 },
 i32 get_data(i32 index) {
     auto data = DATA_STR;
 
-    return data[index] + (data[index + INDEX_EG] - 32 << 16) - 32;
+    return data[index] - 32 + (data[index + INDEX_EG] - 32 << 16);
 }

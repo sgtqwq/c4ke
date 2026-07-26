@@ -15,21 +15,12 @@ struct Board {
         board[64];
 
     null edit(i32 square, i32 piece) {
-        // Remove any pieces that exist in this square
-        if (board[square] < PIECE_NONE)
-            pieces[board[square] / 2] ^= 1ull << square,
-            colors[board[square] % 2] ^= 1ull << square,
-
-            hash ^= KEYS[board[square]][square],
-            (board[square] < WHITE_KNIGHT ? hash_pawn : hash_non_pawn[board[square] % 2]) ^= KEYS[board[square]][square];
-
-        // Place new piece
-        if (piece < PIECE_NONE)
-            pieces[piece / 2] ^= 1ull << square,
-            colors[piece % 2] ^= 1ull << square,
-
-            hash ^= KEYS[piece][square],
-            (piece < WHITE_KNIGHT ? hash_pawn : hash_non_pawn[piece % 2]) ^= KEYS[piece][square];
+        for (i32 p : { +board[square], piece })
+            if (p < PIECE_NONE)
+                pieces[p / 2] ^= 1ull << square,
+                colors[p % 2] ^= 1ull << square,
+                hash ^= KEYS[p][square],
+                (p < WHITE_KNIGHT ? hash_pawn : hash_non_pawn[p % 2]) ^= KEYS[p][square];
 
         board[square] = piece;
     }
@@ -189,14 +180,14 @@ struct Board {
         u64 occupied = colors[WHITE] | colors[BLACK],
             targets = is_all ? ~colors[stm] : colors[!stm],
             pawns = pieces[PAWN] & colors[stm],
-            pawns_push = (stm ? south(pawns) : north(pawns)) & ~occupied & (is_all ? ~0ull : 0xff000000000000ff),
+            pawns_push = (stm ? south(pawns) : north(pawns)) & ~occupied & (-is_all | 0xff000000000000ff),
             pawns_targets = colors[!stm] | u64(enpassant < SQUARE_NONE) << enpassant;
 
         // Pawn
-        add_pawn_moves(list, pawns_push, stm ? -8 : 8);
-        add_pawn_moves(list, (stm ? south(pawns_push & 0xff0000000000) : north(pawns_push & 0xff0000)) & ~occupied, stm ? -16 : 16);
-        add_pawn_moves(list, (stm ? se(pawns) : nw(pawns)) & pawns_targets, stm ? -7 : 7);
-        add_pawn_moves(list, (stm ? sw(pawns) : ne(pawns)) & pawns_targets, stm ? -9 : 9);
+        add_pawn_moves(list, pawns_push, 8 - 16 * stm);
+        add_pawn_moves(list, (stm ? south(pawns_push & 0xff0000000000) : north(pawns_push & 0xff0000)) & ~occupied, 16 - 32 * stm);
+        add_pawn_moves(list, (stm ? se(pawns) : nw(pawns)) & pawns_targets, 7 - 14 * stm);
+        add_pawn_moves(list, (stm ? sw(pawns) : ne(pawns)) & pawns_targets, 9 - 18 * stm);
 
         // King
         add_moves(list, targets, occupied, pieces[KING] & colors[stm], KING);
